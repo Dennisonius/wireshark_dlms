@@ -661,7 +661,7 @@ dlms_get_method_name(const dlms_cosem_class *c, int method_id) {
 }
 
 /* The DLMS protocol handle */
-static int dlms_proto;
+static int dlms_proto = -1;
 
 /* The DLMS header_field_info (hfi) structures */
 static struct {
@@ -756,7 +756,7 @@ static struct {
     header_field_info reassembled_in;
     header_field_info reassembled_length;
     header_field_info reassembled_data;
-} dlms_hfi HFI_INIT(dlms_proto) = {
+} dlms_hfi /*HFI_INIT(dlms_proto)*/ = {
     /* HDLC */
     { "Flag", "dlms.hdlc.flag", FT_NONE, BASE_NONE, 0, 0, 0, HFILL },
     { "Type", "dlms.hdlc.type", FT_UINT16, BASE_DEC, 0, 0xf000, 0, HFILL },
@@ -850,6 +850,102 @@ static struct {
     { "Reassembled Data", "dlms.reassembled_data", FT_BYTES, SEP_SPACE, 0, 0, 0, HFILL },
 };
 
+static int hf_fields[sizeof(dlms_hfi) / sizeof(header_field_info)];
+enum
+{
+    /* HDLC */
+    dlms_hfi_hdlc_flag, /* opening/closing flag */
+    dlms_hfi_hdlc_type, /* frame format type */
+    dlms_hfi_hdlc_segmentation, /* frame format segmentation bit */
+    dlms_hfi_hdlc_length, /* frame format length sub-field */
+    dlms_hfi_hdlc_address, /* destination/source address */
+    dlms_hfi_hdlc_frame_i, /* control field & 0x01 (I) */
+    dlms_hfi_hdlc_frame_rr_rnr, /* control field & 0x0f (RR or RNR) */
+    dlms_hfi_hdlc_frame_other, /* control field & 0xef (all other) */
+    dlms_hfi_hdlc_pf, /* poll/final bit */
+    dlms_hfi_hdlc_rsn, /* receive sequence number N(R) */
+    dlms_hfi_hdlc_ssn, /* send sequence number N(S) */
+    dlms_hfi_hdlc_hcs, /* header check sequence */
+    dlms_hfi_hdlc_fcs, /* frame check sequence */
+    dlms_hfi_hdlc_parameter, /* information field parameter */
+    dlms_hfi_hdlc_llc, /* LLC header */
+    /* IEC 4-32 LLC */
+    dlms_hfi_iec432llc,
+    /* Wrapper Protocol Data Unit (WPDU) */
+    dlms_hfi_wrapper_header,
+    /* APDU */
+    dlms_hfi_apdu,
+    dlms_hfi_client_max_receive_pdu_size,
+    dlms_hfi_server_max_receive_pdu_size,
+    dlms_hfi_get_request,
+    dlms_hfi_set_request,
+    dlms_hfi_action_request,
+    dlms_hfi_get_response,
+    dlms_hfi_set_response,
+    dlms_hfi_action_response,
+    dlms_hfi_access_request,
+    dlms_hfi_access_response,
+    dlms_hfi_class_id,
+    dlms_hfi_instance_id,
+    dlms_hfi_attribute_id,
+    dlms_hfi_method_id,
+    dlms_hfi_access_selector,
+    dlms_hfi_data_access_result,
+    dlms_hfi_action_result,
+    dlms_hfi_block_number,
+    dlms_hfi_last_block,
+    dlms_hfi_type_description,
+    dlms_hfi_data,
+    dlms_hfi_date_time,
+    dlms_hfi_length,
+    dlms_hfi_state_error,
+    dlms_hfi_service_error,
+    /* Invoke-Id-And-Priority */
+    dlms_hfi_invoke_id,
+    dlms_hfi_service_class,
+    dlms_hfi_priority,
+    /* Long-Invoke-Id-And-Priority */
+    dlms_hfi_long_invoke_id,
+    dlms_hfi_long_self_descriptive,
+    dlms_hfi_long_processing_option,
+    dlms_hfi_long_service_class,
+    dlms_hfi_long_priority,
+    /* Conformance bits */
+    dlms_hfi_conformance_general_protection,
+    dlms_hfi_conformance_general_block_transfer,
+    dlms_hfi_conformance_read,
+    dlms_hfi_conformance_write,
+    dlms_hfi_conformance_unconfirmed_write,
+    dlms_hfi_conformance_attribute0_supported_with_set,
+    dlms_hfi_conformance_priority_mgmt_supported,
+    dlms_hfi_conformance_attribute0_supported_with_get,
+    dlms_hfi_conformance_block_transfer_with_get_or_read,
+    dlms_hfi_conformance_block_transfer_with_set_or_write,
+    dlms_hfi_conformance_block_transfer_with_action,
+    dlms_hfi_conformance_multiple_references,
+    dlms_hfi_conformance_information_report,
+    dlms_hfi_conformance_data_notification,
+    dlms_hfi_conformance_access,
+    dlms_hfi_conformance_parameterized_access,
+    dlms_hfi_conformance_get,
+    dlms_hfi_conformance_set,
+    dlms_hfi_conformance_selective_access,
+    dlms_hfi_conformance_event_notification,
+    dlms_hfi_conformance_action,
+    /* fragment_items */
+    dlms_hfi_fragments,
+    dlms_hfi_fragment,
+    dlms_hfi_fragment_overlap,
+    dlms_hfi_fragment_overlap_conflict,
+    dlms_hfi_fragment_multiple_tails,
+    dlms_hfi_fragment_too_long_fragment,
+    dlms_hfi_fragment_error,
+    dlms_hfi_fragment_count,
+    dlms_hfi_reassembled_in,
+    dlms_hfi_reassembled_length,
+    dlms_hfi_reassembled_data,
+};
+
 /* Protocol subtree (ett) indices */
 static struct {
     gint dlms;
@@ -898,7 +994,7 @@ enum {
 static guint
 dlms_reassembly_hash_func(gconstpointer key)
 {
-    return (gsize)key;
+    return (guint)(gsize)key;
 }
 
 static gint
@@ -908,13 +1004,13 @@ dlms_reassembly_equal_func(gconstpointer key1, gconstpointer key2)
 }
 
 static gpointer
-dlms_reassembly_key_func(const packet_info *pinfo, guint32 id, const void *data)
+dlms_reassembly_key_func(const packet_info *pinfo _U_, guint32 id, const void *data _U_)
 {
     return (gpointer)(gsize)id;
 }
 
 static void
-dlms_reassembly_free_key_func(gpointer ptr)
+dlms_reassembly_free_key_func(gpointer ptr _U_)
 {
 }
 
@@ -941,9 +1037,9 @@ dlms_dissect_invoke_id_and_priority(proto_tree *tree, tvbuff_t *tvb, gint *offse
     proto_tree *subtree;
 
     subtree = proto_tree_add_subtree(tree, tvb, *offset, 1, dlms_ett.invoke_id_and_priority, 0, "Invoke Id And Priority");
-    proto_tree_add_item(subtree, &dlms_hfi.invoke_id, tvb, *offset, 1, ENC_NA);
-    proto_tree_add_item(subtree, &dlms_hfi.service_class, tvb, *offset, 1, ENC_NA);
-    proto_tree_add_item(subtree, &dlms_hfi.priority, tvb, *offset, 1, ENC_NA);
+    proto_tree_add_item(subtree, hf_fields[dlms_hfi_invoke_id], tvb, *offset, 1, ENC_NA);
+    proto_tree_add_item(subtree, hf_fields[dlms_hfi_service_class], tvb, *offset, 1, ENC_NA);
+    proto_tree_add_item(subtree, hf_fields[dlms_hfi_priority], tvb, *offset, 1, ENC_NA);
     *offset += 1;
 }
 
@@ -953,11 +1049,11 @@ dlms_dissect_long_invoke_id_and_priority(proto_tree *tree, tvbuff_t *tvb, gint *
     proto_tree *subtree;
 
     subtree = proto_tree_add_subtree(tree, tvb, *offset, 4, dlms_ett.invoke_id_and_priority, 0, "Long Invoke Id And Priority");
-    proto_tree_add_item(subtree, &dlms_hfi.long_invoke_id, tvb, *offset, 4, ENC_BIG_ENDIAN);
-    proto_tree_add_item(subtree, &dlms_hfi.long_self_descriptive, tvb, *offset, 4, ENC_BIG_ENDIAN);
-    proto_tree_add_item(subtree, &dlms_hfi.long_processing_option, tvb, *offset, 4, ENC_BIG_ENDIAN);
-    proto_tree_add_item(subtree, &dlms_hfi.long_service_class, tvb, *offset, 4, ENC_BIG_ENDIAN);
-    proto_tree_add_item(subtree, &dlms_hfi.long_priority, tvb, *offset, 4, ENC_BIG_ENDIAN);
+    proto_tree_add_item(subtree, hf_fields[dlms_hfi_long_invoke_id], tvb, *offset, 4, ENC_BIG_ENDIAN);
+    proto_tree_add_item(subtree, hf_fields[dlms_hfi_long_self_descriptive], tvb, *offset, 4, ENC_BIG_ENDIAN);
+    proto_tree_add_item(subtree, hf_fields[dlms_hfi_long_processing_option], tvb, *offset, 4, ENC_BIG_ENDIAN);
+    proto_tree_add_item(subtree, hf_fields[dlms_hfi_long_service_class], tvb, *offset, 4, ENC_BIG_ENDIAN);
+    proto_tree_add_item(subtree, hf_fields[dlms_hfi_long_priority], tvb, *offset, 4, ENC_BIG_ENDIAN);
     *offset += 4;
 }
 
@@ -1010,7 +1106,7 @@ dlms_dissect_cosem_attribute_or_method_descriptor(tvbuff_t *tvb, packet_info *pi
     subtree = proto_tree_add_subtree(tree, tvb, *offset, 9, dlms_ett.cosem_attribute_or_method_descriptor, 0,
                                      is_attribute ? "COSEM Attribute Descriptor" : "COSEM Method Descriptor");
 
-    item = proto_tree_add_item(subtree, &dlms_hfi.class_id, tvb, *offset, 2, ENC_BIG_ENDIAN);
+    item = proto_tree_add_item(subtree, hf_fields[dlms_hfi_class_id], tvb, *offset, 2, ENC_BIG_ENDIAN);
     if (cosem_class) {
         proto_item_append_text(item, ": %s (%u)", cosem_class->name, class_id);
     } else {
@@ -1019,7 +1115,7 @@ dlms_dissect_cosem_attribute_or_method_descriptor(tvbuff_t *tvb, packet_info *pi
     }
     *offset += 2;
 
-    item = proto_tree_add_item(subtree, &dlms_hfi.instance_id, tvb, *offset, 6, ENC_NA);
+    item = proto_tree_add_item(subtree, hf_fields[dlms_hfi_instance_id], tvb, *offset, 6, ENC_NA);
     proto_item_append_text(item, ": %s (%u.%u.%u.%u.%u.%u)",
                            instance_name ? instance_name : "Unknown",
                            tvb_get_guint8(tvb, *offset),
@@ -1031,7 +1127,7 @@ dlms_dissect_cosem_attribute_or_method_descriptor(tvbuff_t *tvb, packet_info *pi
     *offset += 6;
 
     item = proto_tree_add_item(subtree,
-                               is_attribute ? &dlms_hfi.attribute_id : &dlms_hfi.method_id,
+                               is_attribute ? hf_fields[dlms_hfi_attribute_id] : hf_fields[dlms_hfi_method_id],
                                tvb, *offset, 1, ENC_BIG_ENDIAN);
     if (attribute_method_name) {
         proto_item_append_text(item, ": %s (%u)", attribute_method_name, attribute_method_id);
@@ -1059,7 +1155,7 @@ dlms_dissect_data_access_result(tvbuff_t *tvb, packet_info *pinfo, proto_tree *t
     proto_item *item;
     int result;
 
-    item = proto_tree_add_item(tree, &dlms_hfi.data_access_result, tvb, *offset, 1, ENC_NA);
+    item = proto_tree_add_item(tree, hf_fields[dlms_hfi_data_access_result], tvb, *offset, 1, ENC_NA);
     result = tvb_get_guint8(tvb, *offset);
     *offset += 1;
     if (result != 0) {
@@ -1099,7 +1195,7 @@ dlms_dissect_length(tvbuff_t *tvb, proto_tree *tree, gint *offset)
 
     start = *offset;
     length = dlms_get_length(tvb, offset);
-    item = proto_tree_add_item(tree, &dlms_hfi.length, tvb, start, *offset - start, ENC_NA);
+    item = proto_tree_add_item(tree, hf_fields[dlms_hfi_length], tvb, start, *offset - start, ENC_NA);
     proto_item_append_text(item, ": %u", length);
 
     return length;
@@ -1257,7 +1353,7 @@ dlms_dissect_compact_array_content(tvbuff_t *tvb, proto_tree *tree, gint descrip
     proto_tree *subtree;
     unsigned choice;
 
-    item = proto_tree_add_item(tree, &dlms_hfi.data, tvb, *content_offset, 0, ENC_NA);
+    item = proto_tree_add_item(tree, hf_fields[dlms_hfi_data], tvb, *content_offset, 0, ENC_NA);
     choice = tvb_get_guint8(tvb, description_offset);
     description_offset += 1;
     if (choice == 1) { /* array */
@@ -1292,7 +1388,7 @@ dlms_dissect_data(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gint *off
     proto_tree *subtree;
     unsigned choice, length, i;
 
-    item = proto_tree_add_item(tree, &dlms_hfi.data, tvb, *offset, 1, ENC_NA);
+    item = proto_tree_add_item(tree, hf_fields[dlms_hfi_data], tvb, *offset, 1, ENC_NA);
     choice = tvb_get_guint8(tvb, *offset);
     *offset += 1;
     if (choice == 1) { /* array */
@@ -1316,7 +1412,7 @@ dlms_dissect_data(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gint *off
         int content_end;
         unsigned elements;
         subtree = proto_item_add_subtree(item, dlms_ett.composite_data);
-        proto_tree_add_item(subtree, &dlms_hfi.type_description, tvb, description_offset, description_length, ENC_NA);
+        proto_tree_add_item(subtree, hf_fields[dlms_hfi_type_description], tvb, description_offset, description_length, ENC_NA);
         *offset += description_length;
         length = dlms_dissect_length(tvb, subtree, offset);
         elements = 0;
@@ -1365,7 +1461,7 @@ dlms_dissect_datablock_data(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 
     saved_offset = *offset;
     raw_data_length = dlms_get_length(tvb, offset);
-    item = proto_tree_add_item(subtree, &dlms_hfi.data, tvb, saved_offset, *offset - saved_offset + raw_data_length, ENC_NA);
+    item = proto_tree_add_item(subtree, hf_fields[dlms_hfi_data], tvb, saved_offset, *offset - saved_offset + raw_data_length, ENC_NA);
     proto_item_append_text(item, " (length %u)", raw_data_length);
 
     if (block_number == 1) {
@@ -1391,11 +1487,11 @@ dlms_dissect_datablock_g(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gi
 
     subtree = proto_tree_add_subtree(tree, tvb, 0, 0, dlms_ett.datablock, 0, "Datablock G");
 
-    proto_tree_add_item(subtree, &dlms_hfi.last_block, tvb, *offset, 1, ENC_NA);
+    proto_tree_add_item(subtree, hf_fields[dlms_hfi_last_block], tvb, *offset, 1, ENC_NA);
     last_block = tvb_get_guint8(tvb, *offset);
     *offset += 1;
 
-    proto_tree_add_item(subtree, &dlms_hfi.block_number, tvb, *offset, 4, ENC_BIG_ENDIAN);
+    proto_tree_add_item(subtree, hf_fields[dlms_hfi_block_number], tvb, *offset, 4, ENC_BIG_ENDIAN);
     block_number = tvb_get_ntohl(tvb, *offset);
     *offset += 4;
 
@@ -1416,11 +1512,11 @@ dlms_dissect_datablock_sa(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, g
 
     subtree = proto_tree_add_subtree(tree, tvb, 0, 0, dlms_ett.datablock, 0, "Datablock SA");
 
-    proto_tree_add_item(subtree, &dlms_hfi.last_block, tvb, *offset, 1, ENC_NA);
+    proto_tree_add_item(subtree, hf_fields[dlms_hfi_last_block], tvb, *offset, 1, ENC_NA);
     last_block = tvb_get_guint8(tvb, *offset);
     *offset += 1;
 
-    proto_tree_add_item(subtree, &dlms_hfi.block_number, tvb, *offset, 4, ENC_BIG_ENDIAN);
+    proto_tree_add_item(subtree, hf_fields[dlms_hfi_block_number], tvb, *offset, 4, ENC_BIG_ENDIAN);
     block_number = tvb_get_ntohl(tvb, *offset);
     *offset += 4;
 
@@ -1433,7 +1529,7 @@ dlms_dissect_selective_access_descriptor(tvbuff_t *tvb, packet_info *pinfo, prot
     proto_item *item;
     proto_tree *subtree = proto_tree_add_subtree(tree, tvb, *offset, 0, dlms_ett.selective_access_descriptor, &item, "Selective Access Descriptor");
     int selector = tvb_get_guint8(tvb, *offset);
-    proto_tree_add_item(subtree, &dlms_hfi.access_selector, tvb, *offset, 1, ENC_NA);
+    proto_tree_add_item(subtree, hf_fields[dlms_hfi_access_selector], tvb, *offset, 1, ENC_NA);
     *offset += 1;
     if (selector) {
         dlms_dissect_data(tvb, pinfo, subtree, offset);
@@ -1452,7 +1548,7 @@ dlms_dissect_access_request_specification(tvbuff_t *tvb, packet_info *pinfo, pro
     sequence_of = dlms_get_length(tvb, offset);
     for (i = 0; i < sequence_of; i++) {
         int choice = tvb_get_guint8(tvb, *offset);
-        subitem = proto_tree_add_item(subtree, &dlms_hfi.access_request, tvb, *offset, 1, ENC_NA);
+        subitem = proto_tree_add_item(subtree, hf_fields[dlms_hfi_access_request], tvb, *offset, 1, ENC_NA);
         proto_item_prepend_text(subitem, "[%u] ", i + 1);
         subsubtree = proto_item_add_subtree(subitem, dlms_ett.access_request);
         *offset += 1;
@@ -1480,11 +1576,11 @@ static void
 dlms_dissect_conformance(tvbuff_t *tvb, proto_tree *tree, gint offset)
 {
     proto_tree *subtree;
-    header_field_info *hfi;
+    unsigned hfi;
 
     subtree = proto_tree_add_subtree(tree, tvb, offset, 7, dlms_ett.conformance, 0, "Conformance");
-    for (hfi = &dlms_hfi.conformance_general_protection; hfi <= &dlms_hfi.conformance_action; hfi++) {
-        proto_tree_add_item(subtree, hfi, tvb, offset + 4, 3, ENC_BIG_ENDIAN);
+    for (hfi = dlms_hfi_conformance_general_protection; hfi <= dlms_hfi_conformance_action; hfi++) {
+        proto_tree_add_item(subtree, hf_fields[hfi], tvb, offset + 4, 3, ENC_BIG_ENDIAN);
     }
 }
 
@@ -1501,7 +1597,7 @@ dlms_dissect_data_notification(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
 
     date_time_offset = offset;
     date_time_length = dlms_get_length(tvb, &offset);
-    item = proto_tree_add_item(tree, &dlms_hfi.date_time, tvb, date_time_offset, offset - date_time_offset + date_time_length, ENC_NA);
+    item = proto_tree_add_item(tree, hf_fields[dlms_hfi_date_time], tvb, date_time_offset, offset - date_time_offset + date_time_length, ENC_NA);
     dlms_append_date_time_maybe(tvb, item, offset, date_time_length);
 
     /* notification-body */
@@ -1524,7 +1620,7 @@ dlms_dissect_aarq(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gint offs
         if (tag == 0xbe) { /* user-information */
             subtree = proto_tree_add_subtree(tree, tvb, offset, 2 + length, dlms_ett.user_information, 0, "User-Information");
             dlms_dissect_conformance(tvb, subtree, offset + 2 + length - 9);
-            proto_tree_add_item(subtree, &dlms_hfi.client_max_receive_pdu_size, tvb, offset + 2 + length - 2, 2, ENC_BIG_ENDIAN);
+            proto_tree_add_item(subtree, hf_fields[dlms_hfi_client_max_receive_pdu_size], tvb, offset + 2 + length - 2, 2, ENC_BIG_ENDIAN);
         }
         offset += 2 + length;
     }
@@ -1546,7 +1642,7 @@ dlms_dissect_aare(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gint offs
         if (tag == 0xbe) { /* user-information */
             subtree = proto_tree_add_subtree(tree, tvb, offset, 2 + length, dlms_ett.user_information, 0, "User-Information");
             dlms_dissect_conformance(tvb, subtree, offset + 2 + length - 11);
-            proto_tree_add_item(subtree, &dlms_hfi.server_max_receive_pdu_size, tvb, offset + 2 + length - 4, 2, ENC_BIG_ENDIAN);
+            proto_tree_add_item(subtree, hf_fields[dlms_hfi_server_max_receive_pdu_size], tvb, offset + 2 + length - 4, 2, ENC_BIG_ENDIAN);
         }
         offset += 2 + length;
     }
@@ -1558,7 +1654,7 @@ dlms_dissect_get_request(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gi
     int choice;
     unsigned block_number;
 
-    proto_tree_add_item(tree, &dlms_hfi.get_request, tvb, offset, 1, ENC_NA);
+    proto_tree_add_item(tree, hf_fields[dlms_hfi_get_request], tvb, offset, 1, ENC_NA);
     choice = tvb_get_guint8(tvb, offset);
     offset += 1;
     dlms_dissect_invoke_id_and_priority(tree, tvb, &offset);
@@ -1567,7 +1663,7 @@ dlms_dissect_get_request(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gi
         dlms_dissect_cosem_attribute_descriptor(tvb, pinfo, tree, &offset);
         dlms_dissect_selective_access_descriptor(tvb, pinfo, tree, &offset);
     } else if (choice == DLMS_GET_REQUEST_NEXT) {
-        proto_tree_add_item(tree, &dlms_hfi.block_number, tvb, offset, 4, ENC_BIG_ENDIAN);
+        proto_tree_add_item(tree, hf_fields[dlms_hfi_block_number], tvb, offset, 4, ENC_BIG_ENDIAN);
         block_number = tvb_get_ntohl(tvb, offset);
         offset += 4;
         col_add_fstr(pinfo->cinfo, COL_INFO, "Get-Request-Next (block %u)", block_number);
@@ -1582,7 +1678,7 @@ dlms_dissect_set_request(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gi
     int choice;
     proto_tree *subtree;
 
-    proto_tree_add_item(tree, &dlms_hfi.set_request, tvb, offset, 1, ENC_NA);
+    proto_tree_add_item(tree, hf_fields[dlms_hfi_set_request], tvb, offset, 1, ENC_NA);
     choice = tvb_get_guint8(tvb, offset);
     offset += 1;
     dlms_dissect_invoke_id_and_priority(tree, tvb, &offset);
@@ -1623,7 +1719,7 @@ dlms_dissect_action_request(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
     int choice, method_invocation_parameters;
     proto_tree *subtree;
 
-    proto_tree_add_item(tree, &dlms_hfi.action_request, tvb, offset, 1, ENC_NA);
+    proto_tree_add_item(tree, hf_fields[dlms_hfi_action_request], tvb, offset, 1, ENC_NA);
     choice = tvb_get_guint8(tvb, offset);
     offset += 1;
     dlms_dissect_invoke_id_and_priority(tree, tvb, &offset);
@@ -1647,7 +1743,7 @@ dlms_dissect_get_response(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, g
     int choice, result;
     proto_tree *subtree;
 
-    proto_tree_add_item(tree, &dlms_hfi.get_response, tvb, offset, 1, ENC_NA);
+    proto_tree_add_item(tree, hf_fields[dlms_hfi_get_response], tvb, offset, 1, ENC_NA);
     choice = tvb_get_guint8(tvb, offset);
     offset += 1;
     dlms_dissect_invoke_id_and_priority(tree, tvb, &offset);
@@ -1674,7 +1770,7 @@ dlms_dissect_set_response(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, g
 {
     unsigned choice, block_number;
 
-    proto_tree_add_item(tree, &dlms_hfi.set_response, tvb, offset, 1, ENC_NA);
+    proto_tree_add_item(tree, hf_fields[dlms_hfi_set_response], tvb, offset, 1, ENC_NA);
     choice = tvb_get_guint8(tvb, offset);
     offset += 1;
     dlms_dissect_invoke_id_and_priority(tree, tvb, &offset);
@@ -1683,13 +1779,13 @@ dlms_dissect_set_response(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, g
         dlms_dissect_data_access_result(tvb, pinfo, tree, &offset);
     } else if (choice == DLMS_SET_RESPONSE_DATABLOCK) {
         col_add_str(pinfo->cinfo, COL_INFO, "Set-Response-Datablock");
-        proto_tree_add_item(tree, &dlms_hfi.block_number, tvb, offset, 4, ENC_BIG_ENDIAN);
+        proto_tree_add_item(tree, hf_fields[dlms_hfi_block_number], tvb, offset, 4, ENC_BIG_ENDIAN);
         block_number = tvb_get_ntohl(tvb, offset);
         col_append_fstr(pinfo->cinfo, COL_INFO, " (block %u)", block_number);
     } else if (choice == DLMS_SET_RESPONSE_LAST_DATABLOCK) {
         col_add_str(pinfo->cinfo, COL_INFO, "Set-Response-Last-Datablock");
         dlms_dissect_data_access_result(tvb, pinfo, tree, &offset);
-        proto_tree_add_item(tree, &dlms_hfi.block_number, tvb, offset, 4, ENC_BIG_ENDIAN);
+        proto_tree_add_item(tree, hf_fields[dlms_hfi_block_number], tvb, offset, 4, ENC_BIG_ENDIAN);
         block_number = tvb_get_ntohl(tvb, offset);
         col_append_fstr(pinfo->cinfo, COL_INFO, " (block %u)", block_number);
     } else {
@@ -1704,13 +1800,13 @@ dlms_dissect_action_response(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree
     const gchar *result_name;
     proto_item *item;
 
-    proto_tree_add_item(tree, &dlms_hfi.action_response, tvb, offset, 1, ENC_NA);
+    proto_tree_add_item(tree, hf_fields[dlms_hfi_action_response], tvb, offset, 1, ENC_NA);
     choice = tvb_get_guint8(tvb, offset);
     offset += 1;
     dlms_dissect_invoke_id_and_priority(tree, tvb, &offset);
     if (choice == DLMS_ACTION_RESPONSE_NORMAL) {
         col_add_str(pinfo->cinfo, COL_INFO, "Action-Response-Normal");
-        item = proto_tree_add_item(tree, &dlms_hfi.action_result, tvb, offset, 1, ENC_NA);
+        item = proto_tree_add_item(tree, hf_fields[dlms_hfi_action_result], tvb, offset, 1, ENC_NA);
         result = tvb_get_guint8(tvb, offset);
         offset += 1;
         if (result) {
@@ -1729,9 +1825,9 @@ dlms_dissect_exception_response(tvbuff_t *tvb, packet_info *pinfo, proto_tree *t
     proto_item *item;
 
     col_set_str(pinfo->cinfo, COL_INFO, "Exception-Response");
-    item = proto_tree_add_item(tree, &dlms_hfi.state_error, tvb, offset, 1, ENC_NA);
+    item = proto_tree_add_item(tree, hf_fields[dlms_hfi_state_error], tvb, offset, 1, ENC_NA);
     expert_add_info(pinfo, item, &dlms_ei.no_success);
-    item = proto_tree_add_item(tree, &dlms_hfi.service_error, tvb, offset + 1, 1, ENC_NA);
+    item = proto_tree_add_item(tree, hf_fields[dlms_hfi_service_error], tvb, offset + 1, 1, ENC_NA);
     expert_add_info(pinfo, item, &dlms_ei.no_success);
 }
 
@@ -1748,7 +1844,7 @@ dlms_dissect_access_request(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 
     date_time_offset = offset;
     date_time_length = dlms_get_length(tvb, &offset);
-    item = proto_tree_add_item(tree, &dlms_hfi.date_time, tvb, date_time_offset, offset - date_time_offset + date_time_length, ENC_NA);
+    item = proto_tree_add_item(tree, hf_fields[dlms_hfi_date_time], tvb, date_time_offset, offset - date_time_offset + date_time_length, ENC_NA);
     dlms_append_date_time_maybe(tvb, item, offset, date_time_length);
 
     dlms_dissect_access_request_specification(tvb, pinfo, tree, &offset);
@@ -1771,7 +1867,7 @@ dlms_dissect_access_response(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree
 
     date_time_offset = offset;
     date_time_length = dlms_get_length(tvb, &offset);
-    item = proto_tree_add_item(tree, &dlms_hfi.date_time, tvb, date_time_offset, offset - date_time_offset + date_time_length, ENC_NA);
+    item = proto_tree_add_item(tree, hf_fields[dlms_hfi_date_time], tvb, date_time_offset, offset - date_time_offset + date_time_length, ENC_NA);
     dlms_append_date_time_maybe(tvb, item, offset, date_time_length);
 
     dlms_dissect_access_request_specification(tvb, pinfo, tree, &offset);
@@ -1781,7 +1877,7 @@ dlms_dissect_access_response(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree
     subtree = proto_tree_add_subtree(tree, tvb, offset, 0, dlms_ett.access_response_specification, 0, "Access Response Specification");
     sequence_of = dlms_get_length(tvb, &offset);
     for (i = 0; i < sequence_of; i++) {
-        item = proto_tree_add_item(subtree, &dlms_hfi.access_response, tvb, offset, 1, ENC_NA);
+        item = proto_tree_add_item(subtree, hf_fields[dlms_hfi_access_response], tvb, offset, 1, ENC_NA);
         proto_item_prepend_text(item, "[%u] ", i + 1);
         subsubtree = proto_item_add_subtree(item, dlms_ett.access_request);
         offset += 1;
@@ -1795,7 +1891,7 @@ dlms_dissect_apdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gint offs
 {
     unsigned choice;
 
-    proto_tree_add_item(tree, &dlms_hfi.apdu, tvb, offset, 1, ENC_NA);
+    proto_tree_add_item(tree, hf_fields[dlms_hfi_apdu], tvb, offset, 1, ENC_NA);
     choice = tvb_get_guint8(tvb, offset);
     offset += 1;
     if (choice == DLMS_DATA_NOTIFICATION) {
@@ -1835,7 +1931,7 @@ dlms_dissect_apdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gint offs
 
 /* Dissect a check sequence field (HCS or FCS) of an HDLC frame */
 static void
-dlms_dissect_hdlc_check_sequence(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset, int length, header_field_info *hfi)
+dlms_dissect_hdlc_check_sequence(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset, int length, int hfi)
 {
     int i, j;
     unsigned cs;
@@ -1883,7 +1979,7 @@ dlms_dissect_hdlc_information(tvbuff_t *tvb, proto_tree *tree, gint *offset)
                 for (j = 0; j < parameter_length; j++) {
                     value = (value << 8) + tvb_get_guint8(tvb, *offset + 2 + j);
                 }
-                item = proto_tree_add_item(subtree, &dlms_hfi.hdlc_parameter, tvb, *offset, 2 + parameter_length, ENC_NA);
+                item = proto_tree_add_item(subtree, hf_fields[dlms_hfi_hdlc_parameter], tvb, *offset, 2 + parameter_length, ENC_NA);
                 proto_item_set_text(item, "%s: %u",
                     parameter == 5 ? "Maximum Information Field Length Transmit" :
                     parameter == 6 ? "Maximum Information Field Length Receive" :
@@ -1907,113 +2003,135 @@ dlms_dissect_hdlc(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     fragment_head *frags;
     tvbuff_t *rtvb; /* reassembled tvb */
     unsigned length, segmentation, control;
+    unsigned field_offset = 0;  /* go to Flag */
 
-    subtree = proto_tree_add_subtree(tree, tvb, 0, 0, dlms_ett.hdlc, 0, "HDLC");
+    subtree = proto_tree_add_subtree(tree, tvb, field_offset, 0, dlms_ett.hdlc, 0, "HDLC");
 
-    /* Opening flag */
-    proto_tree_add_item(subtree, &dlms_hfi.hdlc_flag, tvb, 0, 1, ENC_NA);
+    /* 1. Opening flag */
+    proto_tree_add_item(subtree, hf_fields[dlms_hfi_hdlc_flag], tvb, field_offset, 1, ENC_NA);
+    field_offset++; /* go to Frame format field */
 
-    /* Frame format field */
-    subsubtree = proto_tree_add_subtree(subtree, tvb, 1, 2, dlms_ett.hdlc_format, 0, "Frame Format");
-    proto_tree_add_item(subsubtree, &dlms_hfi.hdlc_type, tvb, 1, 2, ENC_BIG_ENDIAN);
-    proto_tree_add_item(subsubtree, &dlms_hfi.hdlc_segmentation, tvb, 1, 2, ENC_BIG_ENDIAN);
-    segmentation = (tvb_get_ntohs(tvb, 1) >> 11) & 1;
-    proto_tree_add_item(subsubtree, &dlms_hfi.hdlc_length, tvb, 1, 2, ENC_BIG_ENDIAN);
-    length = tvb_get_ntohs(tvb, 1) & 0x7ff; /* length of HDLC frame excluding the opening and closing flag fields */
+    /* 2. Frame format field */
+    subsubtree = proto_tree_add_subtree(subtree, tvb, field_offset, 2, dlms_ett.hdlc_format, 0, "Frame Format");
+    proto_tree_add_item(subsubtree, hf_fields[dlms_hfi_hdlc_type], tvb, field_offset, 2, ENC_BIG_ENDIAN);
+    proto_tree_add_item(subsubtree, hf_fields[dlms_hfi_hdlc_segmentation], tvb, field_offset, 2, ENC_BIG_ENDIAN);
+    segmentation = (tvb_get_ntohs(tvb, field_offset) >> 11) & 1;
+    proto_tree_add_item(subsubtree, hf_fields[dlms_hfi_hdlc_length], tvb, field_offset, 2, ENC_BIG_ENDIAN);
+    length = tvb_get_ntohs(tvb, field_offset) & 0x7ff; /* length of HDLC frame excluding the opening and closing flag fields */
+    field_offset += 2;  /* go to Destination address field */
 
-    /* Destination address field */
-    subsubtree = proto_tree_add_subtree(subtree, tvb, 3, 1, dlms_ett.hdlc_address, 0, "Destination Address");
-    proto_tree_add_item(subsubtree, &dlms_hfi.hdlc_address, tvb, 3, 1, ENC_NA);
+    /* 3. Destination address field */
+    /* Check for address with various length */
+    gint addr_length;
+    for (addr_length = 1; addr_length <= 4; addr_length++)
+    {
+        guint8 temp = tvb_get_guint8(tvb, field_offset+addr_length-1) & 0x01; /* less significant bit: 1 - last addr byte*/
+        if(temp)
+            break;
+    }
 
-    /* Source address field */
-    subsubtree = proto_tree_add_subtree(subtree, tvb, 4, 1, dlms_ett.hdlc_address, 0, "Source Address");
-    proto_tree_add_item(subsubtree, &dlms_hfi.hdlc_address, tvb, 4, 1, ENC_NA);
+    subsubtree = proto_tree_add_subtree(subtree, tvb, field_offset, addr_length, dlms_ett.hdlc_address, 0, "Destination Address");
+    proto_tree_add_item(subsubtree, hf_fields[dlms_hfi_hdlc_address], tvb, field_offset, addr_length, ENC_NA);
+    field_offset += addr_length;  /* go to Source address field */
 
-    /* Control field */
-    subsubtree = proto_tree_add_subtree(subtree, tvb, 5, 1, dlms_ett.hdlc_control, 0, "Control");
-    control = tvb_get_guint8(tvb, 5);
+    /* 4. Source address field */
+    /* Check for address with various length */
+    for (addr_length = 1; addr_length <= 4; addr_length++)
+    {
+        guint8 temp = tvb_get_guint8(tvb, field_offset+addr_length-1) & 0x01; /* less significant bit: 1 - last addr byte*/
+        if(temp)
+            break;
+    }
+    subsubtree = proto_tree_add_subtree(subtree, tvb, field_offset, addr_length, dlms_ett.hdlc_address, 0, "Source Address");
+    proto_tree_add_item(subsubtree, hf_fields[dlms_hfi_hdlc_address], tvb, field_offset, addr_length, ENC_NA);
+    field_offset += addr_length;  /* go to Source address field */
+
+    /* 5. Control field */
+    subsubtree = proto_tree_add_subtree(subtree, tvb, field_offset, 1, dlms_ett.hdlc_control, 0, "Control");
+    control = tvb_get_guint8(tvb, field_offset);
 
     /* Header check sequence field */
     if (length > 7) {
-        dlms_dissect_hdlc_check_sequence(tvb, pinfo, subtree, 1, 5, &dlms_hfi.hdlc_hcs);
+        dlms_dissect_hdlc_check_sequence(tvb, pinfo, subtree, 1, field_offset, hf_fields[dlms_hfi_hdlc_hcs]);
     }
 
     /* Control sub-fields and information field */
     if ((control & 0x01) == 0x00) {
         col_add_str(pinfo->cinfo, COL_INFO, "HDLC I"); /* Information */
-        proto_tree_add_item(subsubtree, &dlms_hfi.hdlc_frame_i, tvb, 5, 1, ENC_NA);
-        proto_tree_add_item(subsubtree, &dlms_hfi.hdlc_pf, tvb, 5, 1, ENC_NA);
-        proto_tree_add_item(subsubtree, &dlms_hfi.hdlc_rsn, tvb, 5, 1, ENC_NA);
-        proto_tree_add_item(subsubtree, &dlms_hfi.hdlc_ssn, tvb, 5, 1, ENC_NA);
+        proto_tree_add_item(subsubtree, hf_fields[dlms_hfi_hdlc_frame_i], tvb, field_offset, 1, ENC_NA);
+        proto_tree_add_item(subsubtree, hf_fields[dlms_hfi_hdlc_pf], tvb, field_offset, 1, ENC_NA);
+        proto_tree_add_item(subsubtree, hf_fields[dlms_hfi_hdlc_rsn], tvb, field_offset, 1, ENC_NA);
+        proto_tree_add_item(subsubtree, hf_fields[dlms_hfi_hdlc_ssn], tvb, field_offset, 1, ENC_NA);
+        field_offset += (2 + 1);  /* go to Information field skipping 2 bytes HCS*/
 
-        subsubtree = proto_tree_add_subtree_format(subtree, tvb, 8, length - 9, dlms_ett.hdlc_information, 0, "Information Field (length %u)", length - 9);
-        frags = fragment_add_seq_next(&dlms_reassembly_table, tvb, 8, pinfo, DLMS_REASSEMBLY_ID_HDLC, 0, length - 9, segmentation);
-        rtvb = process_reassembled_data(tvb, 8, pinfo, "Reassembled", frags, &dlms_fragment_items, 0, tree);
+        subsubtree = proto_tree_add_subtree_format(subtree, tvb, field_offset, length - (field_offset + 1), dlms_ett.hdlc_information, 0, "Information Field (length %u)", length - (field_offset + 1));
+        frags = fragment_add_seq_next(&dlms_reassembly_table, tvb, field_offset, pinfo, DLMS_REASSEMBLY_ID_HDLC, 0, length - (field_offset + 1), segmentation);
+        rtvb = process_reassembled_data(tvb, field_offset, pinfo, "Reassembled", frags, &dlms_fragment_items, 0, tree);
         if (rtvb) {
-            proto_tree_add_item(subsubtree, &dlms_hfi.hdlc_llc, rtvb, 0, 3, ENC_NA);
+            proto_tree_add_item(subsubtree, hf_fields[dlms_hfi_hdlc_llc], rtvb, 0, 3, ENC_NA);
             dlms_dissect_apdu(rtvb, pinfo, tree, 3);
         }
     } else if ((control & 0x0f) == 0x01) {
         col_set_str(pinfo->cinfo, COL_INFO, "HDLC RR"); /* Receive Ready */
-        proto_tree_add_item(subsubtree, &dlms_hfi.hdlc_frame_rr_rnr, tvb, 5, 1, ENC_NA);
-        proto_tree_add_item(subsubtree, &dlms_hfi.hdlc_pf, tvb, 5, 1, ENC_NA);
-        proto_tree_add_item(subsubtree, &dlms_hfi.hdlc_rsn, tvb, 5, 1, ENC_NA);
+        proto_tree_add_item(subsubtree, hf_fields[dlms_hfi_hdlc_frame_rr_rnr], tvb, field_offset, 1, ENC_NA);
+        proto_tree_add_item(subsubtree, hf_fields[dlms_hfi_hdlc_pf], tvb, field_offset, 1, ENC_NA);
+        proto_tree_add_item(subsubtree, hf_fields[dlms_hfi_hdlc_rsn], tvb, field_offset, 1, ENC_NA);
     } else if ((control & 0x0f) == 0x05) {
         col_set_str(pinfo->cinfo, COL_INFO, "HDLC RNR"); /* Receive Not Ready */
-        item = proto_tree_add_item(subsubtree, &dlms_hfi.hdlc_frame_rr_rnr, tvb, 5, 1, ENC_NA);
+        item = proto_tree_add_item(subsubtree, hf_fields[dlms_hfi_hdlc_frame_rr_rnr], tvb, field_offset, 1, ENC_NA);
         expert_add_info(pinfo, item, &dlms_ei.no_success);
-        proto_tree_add_item(subsubtree, &dlms_hfi.hdlc_pf, tvb, 5, 1, ENC_NA);
-        proto_tree_add_item(subsubtree, &dlms_hfi.hdlc_rsn, tvb, 5, 1, ENC_NA);
+        proto_tree_add_item(subsubtree, hf_fields[dlms_hfi_hdlc_pf], tvb, field_offset, 1, ENC_NA);
+        proto_tree_add_item(subsubtree, hf_fields[dlms_hfi_hdlc_rsn], tvb, field_offset, 1, ENC_NA);
     } else if ((control & 0xef) == 0x83) { /* Set Normal Response Mode */
         col_set_str(pinfo->cinfo, COL_INFO, "HDLC SNRM");
-        proto_tree_add_item(subsubtree, &dlms_hfi.hdlc_frame_other, tvb, 5, 1, ENC_NA);
-        proto_tree_add_item(subsubtree, &dlms_hfi.hdlc_pf, tvb, 5, 1, ENC_NA);
-        if (length > 7) {
-            gint offset = 8;
-            dlms_dissect_hdlc_information(tvb, subtree, &offset);
+        proto_tree_add_item(subsubtree, hf_fields[dlms_hfi_hdlc_frame_other], tvb, field_offset, 1, ENC_NA);
+        proto_tree_add_item(subsubtree, hf_fields[dlms_hfi_hdlc_pf], tvb, field_offset, 1, ENC_NA);
+        field_offset += (2 + 1);  /* go to Information field skipping 2 bytes HCS*/
+        if (length >= field_offset) {
+            dlms_dissect_hdlc_information(tvb, subtree, &field_offset);
         }
     } else if ((control & 0xef) == 0x43) {
         col_set_str(pinfo->cinfo, COL_INFO, "HDLC DISC"); /* Disconnect */
-        proto_tree_add_item(subsubtree, &dlms_hfi.hdlc_frame_other, tvb, 5, 1, ENC_NA);
-        proto_tree_add_item(subsubtree, &dlms_hfi.hdlc_pf, tvb, 5, 1, ENC_NA);
+        proto_tree_add_item(subsubtree, hf_fields[dlms_hfi_hdlc_frame_other], tvb, field_offset, 1, ENC_NA);
+        proto_tree_add_item(subsubtree, hf_fields[dlms_hfi_hdlc_pf], tvb, field_offset, 1, ENC_NA);
     } else if ((control & 0xef) == 0x63) {
         col_set_str(pinfo->cinfo, COL_INFO, "HDLC UA"); /* Unnumbered Acknowledge */
-        proto_tree_add_item(subsubtree, &dlms_hfi.hdlc_frame_other, tvb, 5, 1, ENC_NA);
-        proto_tree_add_item(subsubtree, &dlms_hfi.hdlc_pf, tvb, 5, 1, ENC_NA);
-        if (length > 7) {
-            gint offset = 8;
-            dlms_dissect_hdlc_information(tvb, subtree, &offset);
+        proto_tree_add_item(subsubtree, hf_fields[dlms_hfi_hdlc_frame_other], tvb, field_offset, 1, ENC_NA);
+        proto_tree_add_item(subsubtree, hf_fields[dlms_hfi_hdlc_pf], tvb, field_offset, 1, ENC_NA);
+        field_offset += (2 + 1);  /* go to Information field skipping 2 bytes HCS*/
+        if (length >= field_offset) {
+            dlms_dissect_hdlc_information(tvb, subtree, &field_offset);
         }
     } else if ((control & 0xef) == 0x0f) {
         col_set_str(pinfo->cinfo, COL_INFO, "HDLC DM"); /* Disconnected Mode */
-        item = proto_tree_add_item(subsubtree, &dlms_hfi.hdlc_frame_other, tvb, 5, 1, ENC_NA);
+        item = proto_tree_add_item(subsubtree, hf_fields[dlms_hfi_hdlc_frame_other], tvb, field_offset, 1, ENC_NA);
         expert_add_info(pinfo, item, &dlms_ei.no_success);
-        proto_tree_add_item(subsubtree, &dlms_hfi.hdlc_pf, tvb, 5, 1, ENC_NA);
+        proto_tree_add_item(subsubtree, hf_fields[dlms_hfi_hdlc_pf], tvb, field_offset, 1, ENC_NA);
     } else if ((control & 0xef) == 0x87) {
         col_set_str(pinfo->cinfo, COL_INFO, "HDLC FRMR"); /* Frame Reject */
-        item = proto_tree_add_item(subsubtree, &dlms_hfi.hdlc_frame_other, tvb, 5, 1, ENC_NA);
+        item = proto_tree_add_item(subsubtree, hf_fields[dlms_hfi_hdlc_frame_other], tvb, field_offset, 1, ENC_NA);
         expert_add_info(pinfo, item, &dlms_ei.no_success);
-        proto_tree_add_item(subsubtree, &dlms_hfi.hdlc_pf, tvb, 5, 1, ENC_NA);
+        proto_tree_add_item(subsubtree, hf_fields[dlms_hfi_hdlc_pf], tvb, field_offset, 1, ENC_NA);
     } else if ((control & 0xef) == 0x03) {
         col_set_str(pinfo->cinfo, COL_INFO, "HDLC UI"); /* Unnumbered Information */
-        proto_tree_add_item(subsubtree, &dlms_hfi.hdlc_frame_other, tvb, 5, 1, ENC_NA);
-        proto_tree_add_item(subsubtree, &dlms_hfi.hdlc_pf, tvb, 5, 1, ENC_NA);
+        proto_tree_add_item(subsubtree, hf_fields[dlms_hfi_hdlc_frame_other], tvb, field_offset, 1, ENC_NA);
+        proto_tree_add_item(subsubtree, hf_fields[dlms_hfi_hdlc_pf], tvb, field_offset, 1, ENC_NA);
     } else {
         col_set_str(pinfo->cinfo, COL_INFO, "Unknown HDLC frame");
     }
 
     /* Frame check sequence field */
-    dlms_dissect_hdlc_check_sequence(tvb, pinfo, subtree, 1, length - 2, &dlms_hfi.hdlc_fcs);
+    dlms_dissect_hdlc_check_sequence(tvb, pinfo, subtree, 1, length - 2, hf_fields[dlms_hfi_hdlc_fcs]);
 
     /* Closing flag */
-    proto_tree_add_item(subtree, &dlms_hfi.hdlc_flag, tvb, length + 1, 1, ENC_NA);
+    proto_tree_add_item(subtree, hf_fields[dlms_hfi_hdlc_flag], tvb, length + 1, 1, ENC_NA);
 }
 
 /* Dissect a DLMS APDU in an IEC 61334-4-32 convergence layer data frame (PLC) */
 static void
 dlms_dissect_432(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
-    proto_tree_add_item(tree, &dlms_hfi.iec432llc, tvb, 0, 3, ENC_NA);
+    proto_tree_add_item(tree, hf_fields[dlms_hfi_iec432llc], tvb, 0, 3, ENC_NA);
     dlms_dissect_apdu(tvb, pinfo, tree, 3);
 }
 
@@ -2021,12 +2139,12 @@ dlms_dissect_432(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 static void
 dlms_dissect_wrapper(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
-    proto_tree_add_item(tree, &dlms_hfi.wrapper_header, tvb, 0, 8, ENC_NA);
+    proto_tree_add_item(tree, hf_fields[dlms_hfi_wrapper_header], tvb, 0, 8, ENC_NA);
     dlms_dissect_apdu(tvb, pinfo, tree, 8);
 }
 
 static int
-dlms_dissect(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
+dlms_dissect(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 {
     header_field_info *hfi;
     proto_item *item;
@@ -2036,7 +2154,7 @@ dlms_dissect(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
     col_set_str(pinfo->cinfo, COL_PROTOCOL, "DLMS");
 
     hfi = proto_registrar_get_nth(dlms_proto);
-    item = proto_tree_add_item(tree, hfi, tvb, 0, -1, ENC_NA);
+    item = proto_tree_add_item_new(tree, hfi, tvb, 0, -1, ENC_NA);
     subtree = proto_item_add_subtree(item, dlms_ett.dlms);
 
     first_byte = tvb_get_guint8(tvb, 0);
@@ -2050,6 +2168,9 @@ dlms_dissect(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
         dlms_dissect_apdu(tvb, pinfo, subtree, 0);
     }
 
+    /* Clear the info column */
+    col_clear(pinfo->cinfo, COL_INFO);
+
     return tvb_captured_length(tvb);
 }
 
@@ -2060,12 +2181,14 @@ dlms_register_protoinfo(void)
 
     /* Register the dlms_hfi header field info structures */
     {
-        header_field_info *hfi[sizeof(dlms_hfi) / sizeof(header_field_info)];
+        static hf_register_info hf[sizeof(dlms_hfi) / sizeof(header_field_info)];
         unsigned i;
-        for (i = 0; i < array_length(hfi); i++) {
-            hfi[i] = (header_field_info *)&dlms_hfi + i;
+        for (i = 0; i < array_length(hf); i++) {
+            hf_fields[i] = -1;
+            hf[i].p_id = &(hf_fields[i]);
+            hf[i].hfinfo =  *((header_field_info *)&dlms_hfi + i); //
         }
-        proto_register_fields(dlms_proto, hfi, array_length(hfi));
+        proto_register_field_array(dlms_proto, hf, array_length(hf));
     }
 
     /* Initialise and register the dlms_ett protocol subtree indices */
@@ -2102,39 +2225,28 @@ dlms_register_protoinfo(void)
         };
         reassembly_table_init(&dlms_reassembly_table, &f);
     }
-
-    /* Register the DLMS dissector and the UDP port assigned by IANA for DLMS */
-    {
-        dissector_handle_t dh = register_dissector("DLMS", dlms_dissect, dlms_proto);
-        dissector_add_uint("udp.port", 4059, dh);
-    }
 }
 
 /*
  * The symbols that a Wireshark plugin is required to export.
  */
 
-#define DLMS_PLUGIN_VERSION "0.0.2"
+#define DLMS_PLUGIN_VERSION "0.1.0"
 
-#ifdef VERSION_RELEASE /* wireshark >= 2.6 */
-
-WS_DLL_PUBLIC_DEF const gchar plugin_release[] = VERSION_RELEASE;
-WS_DLL_PUBLIC_DEF const gchar plugin_version[] = DLMS_PLUGIN_VERSION;
-WS_DLL_PUBLIC_DEF void
-plugin_register(void)
+void
+proto_register_dlms(void)
 {
-    static proto_plugin p;
-    p.register_protoinfo = dlms_register_protoinfo;
-    proto_register_plugin(&p);
-}
-
-#else /* wireshark < 2.6 */
-
-WS_DLL_PUBLIC_DEF const gchar version[] = DLMS_PLUGIN_VERSION;
-WS_DLL_PUBLIC_DEF void
-plugin_register(void)
-{
+    // protocol registration
     dlms_register_protoinfo();
 }
 
-#endif
+void
+proto_reg_handoff_dlms(void)
+{
+    dissector_handle_t dh = register_dissector("dlms", dlms_dissect, dlms_proto);
+    /* Register the DLMS dissector and the DLT_USER line port */
+    dissector_add_uint("wtap_encap", WTAP_ENCAP_USER0, dh);
+    /* Register the DLMS dissector and the UDP port assigned by IANA for DLMS */
+    dissector_add_uint("udp.port", 4059, dh);
+}
+

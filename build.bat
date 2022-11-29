@@ -1,11 +1,13 @@
-@if "%vcinstalldir%"=="" call "c:\program files (x86)\microsoft visual studio 14.0\vc\bin\x86_amd64\vcvarsx86_amd64.bat"
+@if "%vcinstalldir%"=="" call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvars64.bat"
 
 @setlocal
-@set wireshark_source_dir=..\wireshark-2.6.0
-@set wireshark_build_dir=..\wireshark-2.6.0-build64
-@set wireshark_run_dir=%wireshark_build_dir%\run\RelWithDebInfo
-@set gtk2_dir=..\wireshark-win64-libs-2.6\gtk2
+@set WIRESHARK_BASE_DIR=..
+@set WIRESHARK_QT6_PREFIX_PATH=d:\Programs\Qt\6.2.4\msvc2019_64
 
-cl.exe /nologo /O2 /I%wireshark_source_dir% /I%wireshark_build_dir% /I%gtk2_dir%\include\glib-2.0 /I%gtk2_dir%\lib\glib-2.0\include /LD dlms.c %wireshark_run_dir%\wireshark.lib
+mkdir ..\wsbuild
+cd ..\wsbuild
 
-copy dlms.dll %wireshark_run_dir%\plugins\2.6\epan\dlms.dll
+cmake -G "Visual Studio 16 2019" -A x64 ..\wireshark
+
+msbuild /m /p:Configuration=RelWithDebInfo Wireshark.sln
+
