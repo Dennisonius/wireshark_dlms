@@ -307,6 +307,8 @@ dlms_get_class(int class_id) {
             "data",
             {
                 "value"
+            },{
+                ""
             }
         },{
             "register",
@@ -464,6 +466,8 @@ dlms_get_class(int class_id) {
                 "thresholds",
                 "monitored_value",
                 "actions"
+            },{
+                ""
             }
         },{
             "single_action_schedule",
@@ -471,6 +475,8 @@ dlms_get_class(int class_id) {
                 "executed_script",
                 "type",
                 "execution_time"
+            },{
+                ""
             }
         },{
             "iec_hdlc_setup",
@@ -483,6 +489,8 @@ dlms_get_class(int class_id) {
                 "inter_octet_time_out",
                 "inactivity_time_out",
                 "device_address"
+            },{
+                ""
             }
         },{
             "data_protection",
@@ -520,6 +528,8 @@ dlms_get_class(int class_id) {
                 "emergency_profile_group_id_list",
                 "emergency_profile_active",
                 "actions"
+            },{
+                ""
             }
         },{
             "zigbee_network_control",
@@ -644,7 +654,7 @@ dlms_get_class(int class_id) {
 
 static const char *
 dlms_get_attribute_name(const dlms_cosem_class *c, int attribute_id) {
-    if (attribute_id > 1 && attribute_id < array_length(c->attributes) + 2) {
+    if (attribute_id > 1 && attribute_id < (int)array_length(c->attributes) + 2) {
         return c->attributes[attribute_id - 2];
     } else if (attribute_id == 1) {
         return "logical_name";
@@ -654,7 +664,7 @@ dlms_get_attribute_name(const dlms_cosem_class *c, int attribute_id) {
 
 static const char *
 dlms_get_method_name(const dlms_cosem_class *c, int method_id) {
-    if (method_id > 0 && method_id < array_length(c->methods) + 1) {
+    if (method_id > 0 && method_id < (int)array_length(c->methods) + 1) {
         return c->methods[method_id - 1];
     }
     return 0;
@@ -1470,9 +1480,9 @@ dlms_dissect_datablock_data(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
     frags = fragment_add_seq_next(&dlms_reassembly_table, tvb, *offset, pinfo, DLMS_REASSEMBLY_ID_DATABLOCK, 0, raw_data_length, last_block == 0);
     rtvb = process_reassembled_data(tvb, *offset, pinfo, "Reassembled", frags, &dlms_fragment_items, 0, tree);
     if (rtvb) {
-        gint offset = 0;
+        gint offset_l = 0;
         subtree = proto_tree_add_subtree(tree, rtvb, 0, 0, dlms_ett.data, 0, "Reassembled Data");
-        dlms_dissect_data(rtvb, pinfo, subtree, &offset);
+        dlms_dissect_data(rtvb, pinfo, subtree, &offset_l);
     }
 
     *offset += raw_data_length;
@@ -1507,7 +1517,7 @@ dlms_dissect_datablock_g(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gi
 static void
 dlms_dissect_datablock_sa(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gint *offset)
 {
-    proto_tree *subtree;    
+    proto_tree *subtree;
     unsigned last_block, block_number;
 
     subtree = proto_tree_add_subtree(tree, tvb, 0, 0, dlms_ett.datablock, 0, "Datablock SA");
@@ -1953,7 +1963,7 @@ dlms_dissect_hdlc_check_sequence(tvbuff_t *tvb, packet_info *pinfo, proto_tree *
     item = proto_tree_add_item(tree, hfi, tvb, offset + length, 2, ENC_NA);
     if (tvb_get_letohs(tvb, offset + length) != cs) {
         expert_add_info(pinfo, item, &dlms_ei.check_sequence);
-    }        
+    }
 }
 
 /* Dissect the information field of an HDLC (SNRM or UA) frame */

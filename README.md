@@ -16,12 +16,10 @@ Common uses:
 
 ### GNU/Linux
 
-1. Install the Wireshark development libraries: sudo apt-get install wireshark-dev
-2. Compile the dlms.so plugin: sh build.sh
+1. Compile the Wireshark source code for Unix, as described in https://www.wireshark.org/docs/wsdg_html_chunked/ChapterSetup.html#ChSetupUNIX
+2. Copy content of scr directory to wireshark sources (wireshark\plugins\epan\dlms)
+4. Recompile the Wireshark
 3. Copy the dlms.so plugin to the Wireshark plugins directory: sudo cp dlms.so /usr/lib/x86_64-linux-gnu/wireshark/plugins/2.4.5/dlms.so
-
-**Warning:**
-*Hadnt checked this for Wireshark v4.1.0. Current sources unable to compile with old ver of wireshark due to changed API for dissector.*
 
 ### Windows
 
