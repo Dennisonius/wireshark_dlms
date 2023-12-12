@@ -26,6 +26,7 @@
 #include <epan/packet.h>
 #include <epan/reassemble.h>
 #include <ws_symbol_export.h>
+#include <wiretap/wtap.h>
 #include "obis.h"
 
 /* Choice values for the currently supported ACSE and xDLMS APDUs */
